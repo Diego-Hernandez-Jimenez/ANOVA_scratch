@@ -1,0 +1,316 @@
+---
+title: "ANOVA Notebook"
+output: html_notebook
+---
+
+# Función principal
+
+ANOVA <- function(factor,vd,data){
+  
+  num_fact <- length(factor)
+  
+  data <- check_factor(factor,data)
+  
+  switch(num_fact,
+         
+         return(one_way(num_fact,factor,vd,data)),
+         return(two_way(num_fact,factor,vd,data)))
+}
+
+# ---------------------------------------------------------
+# ---------------------------------------------------------
+
+# Funciones auxiliares
+
+# Comprueba que los predictores son factores. En caso de no serlo, transforma las variables en factores en el propio dataframe original y lo devuelve.
+
+check_factor <- function(vars,df){
+  
+  for (var in vars){
+    
+    if (!(is.factor(df[,var])))
+      
+      warning(paste0('se convertira ',var,' en tipo factor '))
+      df[,var] <- as.factor(df[,var])
+  }
+  return(df)
+}
+
+# ---------------------------------------------------------
+# ---------------------------------------------------------
+
+# Devuelve gráfico de líneas con las medias de cada nivel (ANOVA de un factor) o de cada combinación de niveles (ANOVA de dos factores). Permite explorar el efecto de la interacción mediante inspección visual.
+
+anova_plot <- function(num_fact,factor,vd,data,medias=NULL,J=NULL){
+  
+  if(num_fact==1){
+    
+    labels <- levels(data[,factor])
+
+    plot(1:J,medias,
+         type='o', lwd=2,
+         ylim=c(min(data[,vd]),max(data[,vd])),
+         xlab=factor,ylab=vd,
+         pch=19, col='#ff6b6b',
+         xaxt='n')
+    
+    axis(1,1:J,labels=labels) # xticks
+  }
+  
+  else{
+    
+    interaction.plot(x.factor = data[,factor[1]], trace.factor = data[,factor[2]], 
+                 response = data[,vd], fun = mean, 
+                 type = "b", legend = TRUE, lwd=2,
+                 ylim=c(min(data[,vd]),max(data[,vd])),
+                 xlab = factor[1], ylab=vd,trace.label=NULL,
+                 pch=c(1,19), col = c('#4ecdc4', '#ff6b6b'))
+  }
+  
+  grid(col = "lightgray", lty = "dotted",
+         lwd = par("lwd"), equilogs = TRUE) # rejilla para ver mejor
+
+}
+
+# ---------------------------------------------------------
+# ---------------------------------------------------------
+
+# Realiza ANOVA de un factor de efectos fijos. El procedimiento está basado en el capítulo dedicado a ANOVA de un factor de Pardo y San Martín (2015). La función proporciona una lista con tres dataframes que contienen el valor del estadístico F, su nivel crítico y tres medidas del tamaño del efecto.
+
+
+one_way <- function(num_fact,factor,vd,data){
+  
+  N <- nrow(data)                                   # Tamaño muestral
+  J <- nlevels(data[,factor])                       # Número de niveles del factor A
+  
+ # ------------------------------------------------- Estimador variabilidad intra basado 
+ #                                                   en varianzas de cada nivel j del factor
+
+  varianzas <- aggregate(data[vd],
+                         by=list(data[[factor]]),
+                         FUN=var)[[vd]]
+  
+  n <- aggregate(data[vd],
+                 by=list(data[[factor]]),
+                 FUN=length)[[vd]]
+  
+  SCE <- sum((n-1)*varianzas)
+  glE <- N-J
+  MCE <- SCE/glE
+  
+  # ------------------------------------------------- Estimador variabilidad inter
+  #                                                   basado en las medias del factor
+
+  medias_A_df <- aggregate(data[vd],
+                           by=list(data[[factor]]),
+                           FUN=mean)
+  medias_A <- medias_A_df[[vd]]             # el df es para la salida
+  
+  media_tot <- mean(data[,vd])
+  SCI <- sum( n * (medias_A-media_tot)^2  )
+  glI <- J-1
+  MCI <- SCI/glI
+  
+  F_stat <- MCI/MCE
+  
+  p_val <- 1-pf(F_stat,glI,glE)
+  
+  # ------------------------------------------------- Salida
+  
+  anova_plot(num_fact,factor,vd,data,medias_A,J)
+
+ # -------------------------------------------------
+  
+  names(medias_A_df) <- c(factor,'medias')
+  
+  sumas_cuad <- data.frame('SCT'=SCI+SCE,
+                           'SCI'=SCI,
+                           'SCE'=SCE)
+  contraste <- data.frame('Factores'=factor,
+                          'F'=F_stat,
+                          'nivel crítico'=p_val)
+
+  return(list('medias'=medias_A_df,
+              'sumas cuadráticas'=sumas_cuad,
+              'contraste'=contraste,
+              'tamaño efecto'=effect_size(num_fact,N,
+                                          glE,
+                                          glA=glI,F_A=F_stat)))
+}
+
+# ---------------------------------------------------------
+# ---------------------------------------------------------
+
+#  Realiza ANOVA de dos factores de efectos fijos y asumiendo mismo número de participantes por combinación de niveles de los factores (diseño equilibrado). El procedimiento está basado en el capítulo dedicado a ANOVA de dos factores de Pardo y San Martín (2015). La función proporciona una lista con tres dataframes que contienen el valor del estadístico F para cada factor y para la interacción, los niveles críticos asociados y tres medidas del tamaño del efecto para cada uno.
+
+two_way <- function(num_fact,factor,vd,data){
+  
+  N <- nrow(data)                                 # Tamaño muestral
+  J <- nlevels(data[,factor[1]])                  # Número de niveles del factor A
+  K <- nlevels(data[,factor[2]])                  # Número de niveles del factor B
+  n <- N/(J*K)                                    # Número de sujetos por combinación jk
+                                                  # (se asume anova con diseño equilibrado)
+  
+  # -------------------------------------------------
+  
+  media_tot <- mean(data[,vd])
+  
+  SCT <- sum((data[vd]-media_tot)^2)
+  glT <- N-1
+ # ------------------------------------------------- Estimador variabilidad intra 
+ #                                                   basado en varianzas de cada combinación jk
+
+  varianzas <- aggregate(data[vd],
+                         by=list(data[[factor[1]]],data[[factor[2]]]),
+                         FUN=var)[[vd]]
+  SCE <- sum((n-1)*varianzas)
+  glE <- N-(J*K)
+  MCE <- SCE/glE
+  
+ # ------------------------------------------------- Estimador variabilidad inter
+ #                                                   basado en medias del factor A
+  medias_A <- aggregate(data[vd],
+                        by=list(data[[factor[1]]]),
+                        FUN=mean)[[vd]]
+  
+  SCa <- n*K*sum( (medias_A-media_tot)^2 )
+  glA <- J-1
+  MCa <- SCa/glA
+  F_stat_A <- MCa/MCE
+  
+  p_val_A <- 1-pf(F_stat_A,glA,glE)
+  
+ # ------------------------------------------------- Estimador variabilidad inter
+ #                                                   basado en medias del factor B
+         
+  medias_B <- aggregate(data[vd],
+                        by=list(data[[factor[2]]]),
+                        FUN=mean)[[vd]]
+  
+  SCb <- n*J*sum( (medias_B-media_tot)^2 )
+  glB <- K-1
+  MCb <- SCb/glB
+  F_stat_B <- MCb/MCE
+  
+  p_val_B <- 1-pf(F_stat_B,glB,glE)
+  
+  # ------------------------------------------------- Estimador variabilidad inter
+  #                                                   basado en medias del factor interacción
+
+  medias_inter_df <- aggregate(data[vd],
+                        by=list(data[[factor[1]]],data[[factor[2]]]),
+                        FUN=mean)
+  medias_inter <- medias_inter_df[[vd]]               # el df es para la salida
+  
+  SCab <- SCT-(SCa+SCb+SCE)
+  glAB <- (J-1)*(K-1)
+  MCab <- SCab/glAB
+  F_stat_AB <- MCab/MCE
+  
+  p_val_AB <- 1-pf(F_stat_AB,glAB,glE)
+
+  # ------------------------------------------------- Ajuste condicional. Compara
+  #                                                   modelo aditivo e interactivo
+  
+  aditiv_vs_inter <- ajuste_condicional(factor,vd,
+                                        SCT,SCa,SCb,SCE,
+                                        glT,glA,glB,glE)
+  
+  # ------------------------------------------------- Salida
+  
+  anova_plot(num_fact,factor,vd,data)
+  
+  # -------------------------------------------------
+
+
+  names(medias_inter_df) <- c(factor,'medias') # nombrar adecuadamente df con medias
+  
+  sumas_cuad <- data.frame('SCT'=SCT,
+                           'SCa'=SCa,
+                           'SCb'=SCb,
+                           'SCab'=SCab,
+                           'SCE'=SCE)
+  contraste <- data.frame('Factores'=c(factor,paste0(factor[1],'*',factor[2])),
+                          'F'=c(F_stat_A,F_stat_B,F_stat_AB),
+                          'nivel crítico'=c(p_val_A,p_val_B,p_val_AB))
+  
+  tamano_efecto <- data.frame(contraste[1],
+                                       effect_size(num_fact,N,
+                                                   glE,
+                                                   glA,F_A=F_stat_A,
+                                                   glB,F_B=F_stat_B,
+                                                   glAB,F_AB=F_stat_AB))
+  return(list('ajuste_condicional'=aditiv_vs_inter,
+              'medias'=medias_inter_df,
+              'sumas cuadráticas'=sumas_cuad,
+              'contraste'=contraste,
+              'tamaño efecto'=tamano_efecto))
+}
+
+# ---------------------------------------------------------
+# ---------------------------------------------------------
+
+# Compara el ajuste del modelo simple que solo incluye efectos principales (modelo aditivo) frente al del modelo más complejo, que incluye el componente de interacción (modelo interactivo). Un resultado no estadísticamente significativo indica que no hay evidencia de que el modelo interactivo produzca una reducción significativa de los errores de predicción en comparación con el modelo más simple. En este caso se da un aviso al usuario, indicando que modelo ANOVA generado puede no ser el óptimo. El procedimiento ha sido copiado de Ato y Vallejo (2015) (p.138).
+
+
+ajuste_condicional <- function(factor,vd,
+                               SCT,SCa,SCb,SCE,
+                               glT,glA,glB,glE){
+  
+  SCE_aditivo <- SCT-(SCa+SCb)
+  glE_aditivo <- glT-(glA+glB)
+  
+  SCE_inter <- SCE            # SCE de modelo inter = SCT-(SCa+SCb+SCab)
+  glE_inter <- glE            # glE de modelo inter = glT-(glA+glB+glAB)
+  
+  F_stat <- ( (SCE_aditivo-SCE_inter)/(glE_aditivo-glE_inter) )/(SCE_inter/glE_inter)
+  p_val <- 1-pf(F_stat,(glE_aditivo-glE_inter),(glE_inter))
+  
+ 
+ adit <-  paste0(vd,'=',factor[1],'+',factor[2])
+ inter <- paste0(vd,'=',factor[1],'+',factor[2],'+',factor[1],'*',factor[2])
+ 
+ comparacion <- data.frame('modelo aditivo'=adit,
+                           'modelo interactivo'=inter,
+                           'F'=F_stat,
+                           'nivel crítico'=p_val)
+  
+  if (p_val>0.05) warning('Diferencia no significativa en grado de ajuste con 
+                          alfa=0,05. El modelo interactivo podría no ser apropiado')
+  
+  return(data.frame('modelos'=c(adit,inter),
+                    'F'=c(NA,F_stat),
+                    'nivel crítico'=c(NA,p_val)))
+}
+
+# ---------------------------------------------------------
+# ---------------------------------------------------------
+
+# Calcula tres medidas del tamaño del efecto para todos los factores involucrados en el ANOVA. En función del tipo de ANOVA (con 1 factor o con 2), devuelve unas fórmulas u otras. Todas las fórmulas empleadas se han copiado directamente de los capítulos dedicados a ANOVA de Pardo y San Martín (2015). Se asume que los factores son de efectos fijos.
+Problema: al comparar resultados con los que se obtienen con software JASP, se observa que omega cuadrado de la función es mayor, siendo la discrepancia bastante grande en el caso del ANOVA de dos factores.
+
+effect_size <- function(num_fact,N,
+                        glE,
+                        glA,F_A,
+                        glB=NULL,F_B=NULL,
+                        glAB=NULL,F_AB=NULL){
+  etas <- double()
+  omegas <- double()
+  deltas <- double()
+  
+  for (gl_F in list(A=c(glA,F_A), B=c(glB,F_B), AB=c(glAB,F_AB))){
+    
+      eta <- (gl_F[1]*gl_F[2])/(gl_F[1]*gl_F[2]+glE)
+      omega <- (gl_F[1]*(gl_F[2]-1))/(gl_F[1]*(gl_F[2]-1)+N)
+      delta <- sqrt( omega/(1-omega) )
+      etas <- c(etas,eta); omegas <- c(omegas,omega); deltas <- c(deltas,delta)
+  }
+  
+  efs <- data.frame('delta Cohen' = deltas,
+                    'eta cuadrado' = etas,
+                    'omega cuadrado' = omegas)
+  
+  return(efs)
+}
+
+
