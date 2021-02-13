@@ -1,7 +1,3 @@
----
-title: "ANOVA Notebook"
-output: html_notebook
----
 
 # Función principal
 
@@ -128,12 +124,12 @@ one_way <- function(num_fact,factor,vd,data){
                            'SCE'=SCE)
   contraste <- data.frame('Factores'=factor,
                           'F'=F_stat,
-                          'nivel crítico'=p_val)
+                          'nivel_crítico'=p_val)
 
   return(list('medias'=medias_A_df,
-              'sumas cuadráticas'=sumas_cuad,
+              'sumas_cuadráticas'=sumas_cuad,
               'contraste'=contraste,
-              'tamaño efecto'=effect_size(num_fact,N,
+              'tamaño_efecto'=effect_size(num_fact,N,
                                           glE,
                                           glA=glI,F_A=F_stat)))
 }
@@ -242,9 +238,9 @@ two_way <- function(num_fact,factor,vd,data){
                                                    glAB,F_AB=F_stat_AB))
   return(list('ajuste_condicional'=aditiv_vs_inter,
               'medias'=medias_inter_df,
-              'sumas cuadráticas'=sumas_cuad,
+              'sumas_cuadráticas'=sumas_cuad,
               'contraste'=contraste,
-              'tamaño efecto'=tamano_efecto))
+              'tamaño_efecto'=tamano_efecto))
 }
 
 # ---------------------------------------------------------
@@ -270,17 +266,17 @@ ajuste_condicional <- function(factor,vd,
  adit <-  paste0(vd,'=',factor[1],'+',factor[2])
  inter <- paste0(vd,'=',factor[1],'+',factor[2],'+',factor[1],'*',factor[2])
  
- comparacion <- data.frame('modelo aditivo'=adit,
-                           'modelo interactivo'=inter,
+ comparacion <- data.frame('modelo_aditivo'=adit,
+                           'modelo_interactivo'=inter,
                            'F'=F_stat,
-                           'nivel crítico'=p_val)
+                           'nivel_crítico'=p_val)
   
   if (p_val>0.05) warning('Diferencia no significativa en grado de ajuste con 
                           alfa=0,05. El modelo interactivo podría no ser apropiado')
   
   return(data.frame('modelos'=c(adit,inter),
                     'F'=c(NA,F_stat),
-                    'nivel crítico'=c(NA,p_val)))
+                    'nivel_crítico'=c(NA,p_val)))
 }
 
 # ---------------------------------------------------------
@@ -306,9 +302,9 @@ effect_size <- function(num_fact,N,
       etas <- c(etas,eta); omegas <- c(omegas,omega); deltas <- c(deltas,delta)
   }
   
-  efs <- data.frame('delta Cohen' = deltas,
-                    'eta cuadrado' = etas,
-                    'omega cuadrado' = omegas)
+  efs <- data.frame('delta_Cohen' = deltas,
+                    'eta_cuadrado' = etas,
+                    'omega_cuadrado' = omegas)
   
   return(efs)
 }
